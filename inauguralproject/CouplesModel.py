@@ -25,6 +25,7 @@ class CouplesModel():
         par.nu      = 0.001
         par.epsilon = 1.
         par.omega   = 0.5
+        par.eta     = 0.0
         
         #ii. Household production
         par.alpha   = 0.5
@@ -78,7 +79,7 @@ class CouplesModel():
         elif par.sigma == 1.: #Cobb-Douglas
             return HM**(1-par.alpha)*HF**par.alpha
         else: #CES
-            return ((1-par.alpha)*HM**((par.sigma-1)(par.sigma)) + par.alpha*HF**((par.sigma-1)(par.sigma)))**(par.sigma/(par.sigma-1))
+            return ((1-par.alpha)*HM**((par.sigma-1)/(par.sigma)) + par.alpha*HF**((par.sigma-1)/(par.sigma)))**(par.sigma/(par.sigma-1))
     
     def cons(self, C, H):
         '''Total consumption'''
@@ -88,13 +89,16 @@ class CouplesModel():
         #b. Return
         return C**par.omega*H**(1-par.omega) + 1e-10
         
-    def utility(self, Q, TM, TF):
+    def utility(self, Q, TM, TF,HF):
         '''Utility function'''
         #a. Unpack
         par = self.par
         
         #b. Return
-        return Q**(1-par.rho)/(1-par.rho) - par.nu*(TM**(1+1/par.epsilon)/(1+1/par.epsilon) + TF**(1+1/par.epsilon)/(1+1/par.epsilon))
+        return Q**(1-par.rho)/(1-par.rho) \
+                - par.nu*(TM**(1+1/par.epsilon)/(1+1/par.epsilon) \
+                        + TF**(1+1/par.epsilon)/(1+1/par.epsilon)) \
+                + par.eta*HF
     
     def value_of_choice(self, LM,LF,HM,HF):
         '''Value of choice'''
@@ -109,7 +113,7 @@ class CouplesModel():
         TF = LF+HF
         
         #c. Return
-        return self.utility(Q,TM,TF)
+        return self.utility(Q,TM,TF,HF)
         
     
     def solve_discrete(self):
@@ -159,7 +163,7 @@ class CouplesModel():
         bounds = ((par.Lmin,par.Lmax),(par.Lmin,par.Lmax),(par.Hmin,par.Hmax),(par.Hmin,par.Hmax))
         
         #e. Solve
-        res = minimize(obj, (init.LM,init.LF,init.HM,init.HF,), method='SLSQP', constraints=constr, bounds=bounds, tol=1e-10)
+        res = minimize(obj, (init.LM,init.LF,init.HM,init.HF,), method='SLSQP', constraints=constr, bounds=bounds, tol=1e-6)
         
         # f. Save results
         sol.LM = res.x[0]
@@ -231,14 +235,14 @@ class CouplesModel():
         #a. Handle constant
         if constant:
             const = np.ones(len(y))
-            X = np.column_stack((const,X))
+            X = np.column_stack((const,x))
         else:
             X = x
         
         #b. Return
         return np.linalg.inv(X.T@X)@X.T@y
         
-    def estimate_beta(self, constant=True):
+    def estimate_beta(self):
         '''Estimate beta'''
         #a. Unpack
         par = self.par
@@ -249,14 +253,58 @@ class CouplesModel():
         x = np.log(par.wF_vec/par.wM)
         
         #c. Estimate beta
-        return self.OLS(y,x,constant)
+        return self.OLS(y,x)
     
-    def SMM(self, theta, moments, weights):
+    def SMM(self, theta0, pnames, target, bounds, weights=None):
+        
+        #a. Define objective function
+        obj = lambda x: self.SMM_obj(x, pnames, target, weights)
+        
+        #b. Define bounds
+        res = minimize(obj, theta0, bounds=bounds, method='Nelder-Mead', tol=1e-4)
+        
+        
+        return res
+    
+    def SMM_obj(self, theta, pnames, target, weights):
         '''Simulated Method of Momemts'''
         
-        theta_hat = moments.T @ weights @ moments
+        #a. Get actual moments
+        actual_moment = np.array(target)
         
-    def match_moment(self):
+        #b. Get simulated moments
+        sim_moment = self.simulate_moments(theta, pnames)
+        
+        #c. Calculate deviation
+        g = actual_moment - sim_moment
+        
+        #d. Handle weights
+        if weights==None:
+            weights = np.eye(len(g))
+        
+        #d. Define objective function
+        print('obj: ',g.T @ weights @ g)
+        return g.T @ weights @ g
+        
+    def simulate_moments(self, theta, pnames):
+        #a. update parameters
+        self.updatepar(pnames, theta)
+        print('guess: ', theta)
+        
+        #b. Solve model
+        self.solve_wF_vec()
+        
+        #c. Estimate beta (moment)
+        beta0, beta1 = self.estimate_beta()
+        
+        #d. Return moments
+        return np.array([beta0, beta1])
+        
+    def updatepar(self,parnames, parvals):
+        """ Update parameters """
+        for i,parname in enumerate(parnames):
+            parval = parvals[i]
+            setattr(self.par,parname,parval)
         
         
         
