@@ -17,7 +17,6 @@ class CouplesModel():
         par = self.par = SimpleNamespace()
         sol_disc = self.sol_disc = SimpleNamespace()
         sol_cont = self.sol_cont = SimpleNamespace()
-        sol_cont = self.sol_vec  = SimpleNamespace()
         
         #b. Set parameters
         #i. Preferences
@@ -25,6 +24,7 @@ class CouplesModel():
         par.nu      = 0.001
         par.epsilon = 1.
         par.omega   = 0.5
+        par.xi      = 0.0
         par.eta     = 0.0
         
         #ii. Household production
@@ -39,7 +39,7 @@ class CouplesModel():
         par.Tmin = 0.
         par.Tmax = 24.
         
-        #c. Grids
+        #c. Grid parameters
         #i. Time spend on work
         par.Lmin = 0.
         par.Lmax = 24.
@@ -55,7 +55,11 @@ class CouplesModel():
         par.wF_max = 1.2
         par.nwF    = 5
         
-        #iii. Make grids
+        #d. Update parameters
+        for key,val in kwargs.items():
+            setattr(par,key,val) 
+        
+        #e. Make grids
         par.L_vec = np.linspace(par.Lmin,par.Lmax,par.nL)
         par.H_vec = np.linspace(par.Hmin,par.Hmax,par.nH)
         par.wF_vec= np.linspace(par.wF_min,par.wF_max,par.nwF)
@@ -88,6 +92,15 @@ class CouplesModel():
         
         #b. Return
         return C**par.omega*H**(1-par.omega) + 1e-10
+    
+    def CRRA(self, var, param):
+        '''CRRA utility function'''
+        if param == 1.:
+            return np.log(var)
+        elif param == 0.:
+            return var
+        else:
+            return var**(1-param)/(1-param)
         
     def utility(self, Q, TM, TF,HF):
         '''Utility function'''
@@ -95,10 +108,10 @@ class CouplesModel():
         par = self.par
         
         #b. Return
-        return Q**(1-par.rho)/(1-par.rho) \
-                - par.nu*(TM**(1+1/par.epsilon)/(1+1/par.epsilon) \
-                        + TF**(1+1/par.epsilon)/(1+1/par.epsilon)) \
-                + par.eta*HF
+        return self.CRRA(Q,par.rho) \
+                - par.nu * self.CRRA(TM,-1/par.epsilon) \
+                - par.nu * self.CRRA(TF,-1/par.epsilon) \
+                + par.xi * self.CRRA(HF,par.eta)
     
     def value_of_choice(self, LM,LF,HM,HF):
         '''Value of choice'''
@@ -163,7 +176,7 @@ class CouplesModel():
         bounds = ((par.Lmin,par.Lmax),(par.Lmin,par.Lmax),(par.Hmin,par.Hmax),(par.Hmin,par.Hmax))
         
         #e. Solve
-        res = minimize(obj, (init.LM,init.LF,init.HM,init.HF,), method='SLSQP', constraints=constr, bounds=bounds, tol=1e-6)
+        res = minimize(obj, (init.LM,init.LF,init.HM,init.HF,), method='SLSQP', constraints=constr, bounds=bounds, tol=1e-8)
         
         # f. Save results
         sol.LM = res.x[0]
@@ -181,10 +194,8 @@ class CouplesModel():
         '''Solve model for vector of wF'''
         #a. Unpack
         par = self.par
-        if discrete:
-            sol = self.sol_disc
-        else:
-            sol = self.sol_cont
+        if discrete: sol = self.sol_disc
+        else:        sol = self.sol_cont
         
         #b. Save initial value
         init_wF = par.wF
@@ -213,11 +224,12 @@ class CouplesModel():
         #e. Restore initial value
         par.wF = init_wF
         
-    def plot(self):
+    def plot(self, discrete=False):
         '''Plot results'''
         #a. Unpack
         par = self.par
-        sol = self.sol_cont
+        if discrete: sol = self.sol_disc
+        else:        sol = self.sol_cont
         
         #b. Calculate variables
         y = np.log(sol.HF_vec/sol.HM_vec)
@@ -255,18 +267,18 @@ class CouplesModel():
         #c. Estimate beta
         return self.OLS(y,x)
     
-    def SMM(self, theta0, pnames, target, bounds, weights=None):
+    def SMD(self, theta0, pnames, target, bounds, method='Nelder-Mead', tol=1e-08, weights=None):
         
         #a. Define objective function
-        obj = lambda x: self.SMM_obj(x, pnames, target, weights)
+        obj = lambda x: self.SMD_obj(x, pnames, target, weights)
         
         #b. Define bounds
-        res = minimize(obj, theta0, bounds=bounds, method='Nelder-Mead', tol=1e-4)
+        res = minimize(obj, theta0, bounds=bounds, method=method, tol=tol)
         
         
         return res
     
-    def SMM_obj(self, theta, pnames, target, weights):
+    def SMD_obj(self, theta, pnames, target, weights):
         '''Simulated Method of Momemts'''
         
         #a. Get actual moments
@@ -287,6 +299,7 @@ class CouplesModel():
         return g.T @ weights @ g
         
     def simulate_moments(self, theta, pnames):
+        '''Simulate moments'''
         #a. update parameters
         self.updatepar(pnames, theta)
         print('guess: ', theta)
