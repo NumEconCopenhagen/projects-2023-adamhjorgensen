@@ -272,9 +272,8 @@ class CouplesModel():
         #a. Define objective function
         obj = lambda x: self.SMD_obj(x, pnames, target, weights)
         
-        #b. Define bounds
+        #b. Optimize
         res = minimize(obj, theta0, bounds=bounds, method=method, tol=tol)
-        
         
         return res
     
