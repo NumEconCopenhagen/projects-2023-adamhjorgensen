@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from types import SimpleNamespace
 from scipy.optimize import minimize, NonlinearConstraint
+from copy import copy
 
 class CouplesModel():
     def __init__(self,**kwargs):
@@ -14,9 +15,9 @@ class CouplesModel():
     def setup(self,**kwargs):
         
         #a. Make name spaces
-        par = self.par = SimpleNamespace()
-        sol_disc = self.sol_disc = SimpleNamespace()
-        sol_cont = self.sol_cont = SimpleNamespace()
+        par = self.par = SimpleNamespace() #For storing parameters
+        self.sol_disc  = SimpleNamespace() #For storing discrete solutions
+        self.sol_cont  = SimpleNamespace() #For storing continuous solutions
         
         #b. Set parameters
         #i. Preferences
@@ -41,7 +42,7 @@ class CouplesModel():
         
         #c. Grid parameters
         #i. Time spend on work
-        par.Lmin = 0.
+        par.Lmin = 0.00001
         par.Lmax = 24.
         par.nL = 49
         
@@ -64,6 +65,26 @@ class CouplesModel():
         par.H_vec = np.linspace(par.Hmin,par.Hmax,par.nH)
         par.wF_vec= np.linspace(par.wF_min,par.wF_max,par.nwF)
         
+    def CRRA(self, var, param):
+        '''CRRA utility function'''
+        if param == 1.:
+            return np.log(var)
+        elif param == 0.:
+            return var
+        else:
+            return (var**(1-param))/(1-param)
+        
+    def CES(self, var1, var2, alpha, sigma):
+        '''CES utility function'''
+        if sigma == 0.: #minimum
+            return np.min(var1,var2)
+        elif sigma == 1.: #Cobb-Douglas
+            out = var1**(1-alpha)*var2**alpha
+        else: #Constant elasticity of substitution
+            out = ((1-alpha)*var1**((sigma-1)/sigma) + alpha*var2**((sigma-1)/sigma))**(sigma/(sigma-1))
+        return out
+    
+    
     def market(self, LM, LF):
         ''' Consumption of market goods'''
         #a. Unpack
@@ -78,13 +99,8 @@ class CouplesModel():
         par = self.par
         
         #b. Return
-        if par.sigma == 0.: #minimum
-            return np.min(HM,HF)
-        elif par.sigma == 1.: #Cobb-Douglas
-            return HM**(1-par.alpha)*HF**par.alpha
-        else: #CES
-            return ((1-par.alpha)*HM**((par.sigma-1)/(par.sigma)) + par.alpha*HF**((par.sigma-1)/(par.sigma)))**(par.sigma/(par.sigma-1))
-    
+        return self.CES(HM,HF,par.alpha,par.sigma)
+        
     def cons(self, C, H):
         '''Total consumption'''
         #a. Unpack
@@ -93,16 +109,8 @@ class CouplesModel():
         #b. Return
         return C**par.omega*H**(1-par.omega) + 1e-10
     
-    def CRRA(self, var, param):
-        '''CRRA utility function'''
-        if param == 1.:
-            return np.log(var)
-        elif param == 0.:
-            return var
-        else:
-            return var**(1-param)/(1-param)
         
-    def utility(self, Q, TM, TF,HF):
+    def utility(self, Q, TM, TF,HF,LM,LF):
         '''Utility function'''
         #a. Unpack
         par = self.par
@@ -111,7 +119,8 @@ class CouplesModel():
         return self.CRRA(Q,par.rho) \
                 - par.nu * self.CRRA(TM,-1/par.epsilon) \
                 - par.nu * self.CRRA(TF,-1/par.epsilon) \
-                + par.xi * self.CRRA(HF,par.eta)
+                + par.xi * self.CRRA((par.wM*LM)/(par.wF*LF),par.eta)
+                #+ par.xi * self.CRRA(HF,par.eta) \
     
     def value_of_choice(self, LM,LF,HM,HF):
         '''Value of choice'''
@@ -126,7 +135,7 @@ class CouplesModel():
         TF = LF+HF
         
         #c. Return
-        return self.utility(Q,TM,TF,HF)
+        return self.utility(Q,TM,TF,HF,LM,LF)
         
     
     def solve_discrete(self):
@@ -197,8 +206,8 @@ class CouplesModel():
         if discrete: sol = self.sol_disc
         else:        sol = self.sol_cont
         
-        #b. Save initial value
-        init_wF = par.wF
+        #b. Save original value
+        orig_wF = copy(par.wF)
         
         #c. Allocate
         n = len(par.wF_vec)
@@ -221,8 +230,8 @@ class CouplesModel():
             sol.HF_vec[i] = sol.HF
             sol.V_vec[i] = sol.V
         
-        #e. Restore initial value
-        par.wF = init_wF
+        #e. Restore original value
+        par.wF = orig_wF
         
     def plot(self, discrete=False):
         '''Plot results'''
@@ -240,7 +249,6 @@ class CouplesModel():
         ax.plot(x, y)
         ax.set_xlabel('wF')
         ax.set_ylabel('log( HF / HM )')
-        plt.show()
         
     def OLS(self,y,x,constant=True):
         '''Ordinary least squares'''
@@ -267,17 +275,26 @@ class CouplesModel():
         #c. Estimate beta
         return self.OLS(y,x)
     
-    def SMD(self, theta0, pnames, target, bounds, method='Nelder-Mead', tol=1e-08, weights=None):
+    def SMD(self, theta0, pnames, target, bounds, method='Nelder-Mead', tol=1e-08, weights=None, do_print=True):
         
-        #a. Define objective function
-        obj = lambda x: self.SMD_obj(x, pnames, target, weights)
+        #a. Save original values
+        orig_theta = [*map(lambda x: copy(getattr(self.par,x)), pnames)]
         
-        #b. Optimize
+        #b. Reset iteration counter
+        self.iter = 0
+        
+        #c. Define objective function
+        obj = lambda x: self.SMD_obj(x, pnames, target, weights,do_print=do_print)
+        
+        #d. Optimize
         res = minimize(obj, theta0, bounds=bounds, method=method, tol=tol)
+        
+        #e. Restore original values
+        self.updatepar(pnames, orig_theta)
         
         return res
     
-    def SMD_obj(self, theta, pnames, target, weights):
+    def SMD_obj(self, theta, pnames, target, weights, do_print):
         '''Simulated Method of Momemts'''
         
         #a. Get actual moments
@@ -294,14 +311,20 @@ class CouplesModel():
             weights = np.eye(len(g))
         
         #d. Define objective function
-        print('obj: ',g.T @ weights @ g)
-        return g.T @ weights @ g
+        obj = g.T @ weights @ g
+        
+        #e. Print 
+        self.iter += 1
+        if do_print & ((self.iter<=10) | (self.iter%10==0)):
+            print(f"Iteration: {self.iter:3},   Guess: {[*map(lambda x: f'{x:6.4f}',theta)]},   Objective function: {obj:11.8f},   LF_vec: {[*map(lambda x: f'{x:4.2f}',self.sol_cont.LF_vec)]}")
+        
+        return obj
         
     def simulate_moments(self, theta, pnames):
         '''Simulate moments'''
+       
         #a. update parameters
         self.updatepar(pnames, theta)
-        print('guess: ', theta)
         
         #b. Solve model
         self.solve_wF_vec()
