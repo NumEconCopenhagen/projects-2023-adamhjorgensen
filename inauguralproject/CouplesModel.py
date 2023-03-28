@@ -124,17 +124,15 @@ class CouplesModel():
     
     def value_of_choice(self, LM,LF,HM,HF):
         '''Value of choice'''
-        #a. Unpack
-        par = self.par
         
-        #b. Calculate
+        #a. Calculate
         C = self.market(LM,LF)
         H = self.homeprod(HM,HF)
         Q = self.cons(C,H)
         TM = LM+HM
         TF = LF+HF
         
-        #c. Return
+        #b. Return
         return self.utility(Q,TM,TF,HF,LM,LF)
         
     
@@ -171,7 +169,7 @@ class CouplesModel():
         #a. Unpack
         par = self.par
         sol = self.sol_cont
-        init = self.sol_disc
+
         
         #b. Define objective function
         obj = lambda x: -self.value_of_choice(x[0],x[1],x[2],x[3])
@@ -185,7 +183,8 @@ class CouplesModel():
         bounds = ((par.Lmin,par.Lmax),(par.Lmin,par.Lmax),(par.Hmin,par.Hmax),(par.Hmin,par.Hmax))
         
         #e. Solve
-        res = minimize(obj, (init.LM,init.LF,init.HM,init.HF,), method='SLSQP', constraints=constr, bounds=bounds, tol=1e-8)
+        init = [4.0]*4
+        res = minimize(obj, (init), method='SLSQP', constraints=constr, bounds=bounds, tol=1e-10)
         
         # f. Save results
         sol.LM = res.x[0]
@@ -194,10 +193,14 @@ class CouplesModel():
         sol.HF = res.x[3]
         sol.V = -res.fun
         
-    def solve(self):
+    def solve(self, method='continuous'):
         '''Solve model'''
-        self.solve_discrete()
-        self.solve_continuous()
+        if method=='continuous':
+            self.solve_continuous()
+        elif method=='discrete':
+            self.solve_discrete()
+        else:
+            raise ValueError('Unknown method')
         
     def solve_wF_vec(self,discrete=False):
         '''Solve model for vector of wF'''
@@ -303,21 +306,22 @@ class CouplesModel():
         #b. Get simulated moments
         sim_moment = self.simulate_moments(theta, pnames)
         
-        #c. Calculate deviation
+        #c. Calculate deviation in moments
         g = actual_moment - sim_moment
         
         #d. Handle weights
-        if weights==None:
+        if weights==None: #Default is identity matrix (equal weight to all moments)
             weights = np.eye(len(g))
         
         #d. Define objective function
         obj = g.T @ weights @ g
         
-        #e. Print 
+        #e. Print iteration results
         self.iter += 1
         if do_print & ((self.iter<=10) | (self.iter%10==0)):
             print(f"Iteration: {self.iter:3},   Guess: {[*map(lambda x: f'{x:6.4f}',theta)]},   Objective function: {obj:11.8f},   LF_vec: {[*map(lambda x: f'{x:4.2f}',self.sol_cont.LF_vec)]}")
         
+        #f. Return objective function
         return obj
         
     def simulate_moments(self, theta, pnames):
