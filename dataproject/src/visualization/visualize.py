@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+import matplotlib
 
 def plot_delta(data):
     # a. Set up sector list and names
@@ -16,7 +18,8 @@ def plot_delta(data):
                     'bol':'Households'}
 
     # b. make plot
-    fig, axs = plt.subplots(3, 3)
+    fig, axs = plt.subplots(3, 3, figsize=(15, 10), sharex=True, sharey=True)
+    matplotlib.rcParams.update({'font.size': 14})
 
     count = 0
     for sec in sectors:
@@ -41,3 +44,4 @@ def plot_delta(data):
     fig.tight_layout()
     fig.legend(loc='upper center', bbox_to_anchor=(0.5, 0.0),
             fancybox=True, shadow=True, ncol=5)
+    fig.gca().yaxis.set_major_formatter(mtick.PercentFormatter(1))

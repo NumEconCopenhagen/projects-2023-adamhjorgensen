@@ -124,8 +124,6 @@ def transform_capital():
     
     # e. Export
     to_processed(data, filename)
-    
-    return data
 
 def transform_investment():
 
@@ -158,6 +156,4 @@ def transform_investment():
 def transform():
     transform_capital()
     transform_investment()
-
-data = transform_capital()
 
