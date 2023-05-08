@@ -36,13 +36,18 @@ class RamseyModelClass():
         par.alpha = 0.30 # capital weight
         par.theta = 0.05 # substitution parameter        
         par.delta = 0.05 # depreciation rate
+        
+        # c. government
+        par.G_share = 0.10 # share of government spending in output
+        par.transfers_share = 0.0 # share of government spending in output
 
-        # c. initial
+        # d. initial
         par.K_lag_ini = 1.0
 
-        # d. misc
+        # e. misc
         par.solver = 'broyden' # solver for the equation system, 'broyden' or 'scipy'
         par.Tpath = 500 # length of transition path, "truncation horizon"
+        
 
     def allocate(self):
         """ allocate arrays for transition path """
@@ -50,19 +55,18 @@ class RamseyModelClass():
         par = self.par
         path = self.path
 
-        allvarnames = ['Gamma','K','L','C','rk','w','r','Y','K_lag']
+        allvarnames = ['Gamma','K','L','C','rk','w','r','Y','K_lag','G','tau_L','xi']
         for varname in allvarnames:
             path.__dict__[varname] =  np.nan*np.ones(par.Tpath)
 
-    def find_steady_state(self,KY_ss,do_print=True):
+    def find_steady_state(self,KL_ss,do_print=True):
         """ find steady state """
 
         par = self.par
         ss = self.ss
 
         # a. find A
-        ss.K = KY_ss
-        K_L = ss.K
+        K_L = KL_ss
         Y_L,_,_ = production(par,1.0,K_L)
         ss.Gamma = 1/Y_L #Gamma set to one (normalized with Y/L)
 
@@ -70,21 +74,29 @@ class RamseyModelClass():
         Y_L,ss.rk,ss.w = production(par,ss.Gamma,K_L)
         assert np.isclose(Y_L,1.0)
 
-        ss.r = ss.rk-par.delta
-        
         # c. implied discount factor
+        ss.r = ss.rk-par.delta
         par.beta = 1/(1+ss.r)
-
-        # d. consumption
         
-        C_L = Y_L - par.delta*K_L
-        N = (ss.w / par.phi)**(1/(par.sigma+par.eta)) * C_L**(- par.sigma / (par.sigma + par.eta))
+        # d. government
+        G_L = par.G_share * Y_L
+        xi_L = par.transfers_share * Y_L
+        ss.tau_L = (G_L + xi_L) / ss.w
+
+        # e. consumption
+        C_L = Y_L - par.delta*K_L - G_L
+        
+        # f. labor
+        N = ((1-ss.tau_L) * ss.w / par.phi)**(1/(par.sigma+par.eta)) * C_L**(- par.sigma / (par.sigma + par.eta))
+        
+        # g. In absolute terms
         ss.L = N
         ss.Y = Y_L * ss.L
         ss.C = C_L * ss.L
         ss.K = K_L * ss.L
-
-        A = (ss.C - ss.w * N) / ss.r
+        ss.G = G_L * ss.L
+        ss.xi = xi_L * ss.L
+        A = (ss.C - (1-ss.tau_L) * ss.w * N - ss.xi) / ss.r
         
         if do_print:
 
@@ -97,6 +109,9 @@ class RamseyModelClass():
             print(f'w_ss = {ss.w:.4f}')
             print(f'Gamma = {ss.Gamma:.4f}')
             print(f'beta = {par.beta:.4f}')
+            print(f'G = {ss.G:.4f}')
+            print(f'tax rate = {ss.tau_L:.4f}')
+            print(f'tax revenue= {ss.tau_L * ss.w * ss.L:.4f}')
             print(f'capital markets clear = {ss.K - A:.4f}')
             print(f'euler error = {1 - par.beta*(1+ss.r):.4f}') 
 
@@ -115,20 +130,23 @@ class RamseyModelClass():
         K = path.K
         K_lag = path.K_lag = np.insert(K[:-1],0,par.K_lag_ini)
         
-        # labor
+        # c. labor
         L = path.L
         
-        # c. production and factor prices
+        # d. production and factor prices
         Y_L,path.rk,path.w = production(par,path.Gamma,K_lag / L)
         path.Y = Y_L * L
         path.r = path.rk-par.delta
         r_plus = np.append(path.r[1:],ss.r)
+        
+        # e. Government
+        path.tau_L = (path.G + path.xi) / (path.w*L)
 
-        # d. errors (also called H)
+        # e. errors (also called H)
         errors = np.nan*np.ones((3,par.Tpath))
         errors[0,:] = C**(-par.sigma) - par.beta*(1+r_plus)*C_plus**(-par.sigma)
-        errors[1,:] = K - ((1-par.delta)*K_lag + (path.Y - C))
-        errors[2,:] = L - ((1/par.phi) * path.w)**(1/par.eta) * C**(-par.sigma/par.eta)
+        errors[1,:] = K - ((1-par.delta)*K_lag + (path.Y - C - path.G))
+        errors[2,:] = L - ((1/par.phi) * (1-path.tau_L) * path.w)**(1/par.eta) * C**(-par.sigma/par.eta)
         
         return errors.ravel()
         
