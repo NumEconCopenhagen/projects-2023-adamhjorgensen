@@ -77,10 +77,97 @@ def get_investment():
     #b. Export to csv
     filename = 'NABK69_I'
     to_raw(data, filename)
+   
+def get_production():
+    """ Extracts data on production from DST and exports it to csv
+    """
+    
+    #a. Get data from DST
+    data = Dst.utils.to_dataframe(Dst.get_data(
+        table_id = 'NIO4F', 
+        variables={
+            'TILGANG1':['P1'], #Production
+            'ANVENDELSE':['*'],
+            'PRISENHED':['V', # Løbende priser
+                         'Y'], # Sidste års priser
+            'TID': ['*']
+            }
+        ))
+    
+    #b. Export to csv
+    filename = 'NIO4F_Y'
+    to_raw(data, filename) 
+    
+def get_materials():
+    """ Extracts data on materials from DST and exports it to csv
+    """
+    
+    #a. Get data from DST
+    data = Dst.utils.to_dataframe(Dst.get_data(
+        table_id = 'NIO4F', 
+        variables={
+            'TILGANG1':['TP2'], #Forbrug i produktionen
+            'ANVENDELSE':['*'],
+            'PRISENHED':['V', # Løbende priser
+                         'Y'], # Sidste års priser
+            'TID': ['*']
+            }
+        ))
+    
+    #b. Export to csv
+    filename = 'NIO4F_R'
+    to_raw(data, filename)
+    
+
+
+def get_employment():
+    """ Extracts data on employment from DST and exports it to csv
+    """
+    
+    #a. Get data from DST
+    data = Dst.utils.to_dataframe(Dst.get_data(
+        table_id = 'NIO3F', 
+        variables={
+            'TILGANG1':['D1'], #Wage income
+            'ANVENDELSE':['*'],
+            'PRISENHED':['V', # Løbende priser
+                         'Y'], # Sidste års priser
+            'TID': ['*']
+            }
+        ))
+    
+    #b. Export to csv
+    filename = 'NIO3F_L'
+    to_raw(data, filename)
+    
+def get_taxes():
+    """ Extracts data on production taxes from DST and exports it to csv
+    """
+    
+    #a. Get data from DST
+    data = Dst.utils.to_dataframe(Dst.get_data(
+        table_id = 'NIO3F', 
+        variables={
+            'TILGANG1':['D29X39'], #production taxes excl. VAT
+            'ANVENDELSE':['*'],
+            'PRISENHED':['V', # Løbende priser
+                         'Y'], # Sidste års priser
+            'TID': ['*']
+            }
+        ))
+    
+    #b. Export to csv
+    filename = 'NIO3F_T'
+    to_raw(data, filename)
     
 def extract():
     get_capital()
     get_investment()
+    get_production()
+    get_materials()
+    get_employment()
+    get_taxes()
+    
 
 
 
