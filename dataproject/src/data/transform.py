@@ -31,9 +31,10 @@ def set_years(df: pd.DataFrame):
     df = df.loc[mask]
     return df
 
-def set_sectors(df: pd.DataFrame, col: str = 'sector'):
+def set_sectors(df: pd.DataFrame):
     
     # a. Keep sector code only (5 first characters)
+    col = 'sector'
     df[col] = df[col].transform(lambda x: x[0:5])
     
     # b. Keep only numeric values which are sectors)
@@ -77,9 +78,24 @@ def rename_prices(df: pd.Series):
         
     return df
 
+def reshape_data(df: pd.DataFrame):
+    """ Reshape data from long to wide format"""
+    
+    # a. Set options
+    values = 'value'
+    columns = ['unit']
+    ignore = ['index', 'type']
+    index = [col for col in df.columns if col not in [values] + columns + ignore]
+    
+    # b. reshape data
+    data = df.pivot(values = values, 
+                    index  = index,
+                    columns = columns)
+    
+    return data
+
 def VQ_to_VD(V: pd.Series, Q: pd.Series):
     """ Converts data from values and quantities to values and values in previous years prices"""
-
     # a. Calculate prices
     # Calculate current year's prices
     P = V / Q
@@ -180,199 +196,54 @@ def make_aktivmap():
     
     return aktivmap
 
-def transform_capital():
-
-    #a. Load
-    filename = 'NABK69_K'
+def transform_variable(filename):
+    """ Transform variable from raw to final format """
+    
+    # a. Load
     data = read_csv(filename)
 
-    #b. Clean data
+    # b. Clean data
     data = rename_colums(data)
-    data['unit'] = rename_prices(data['unit'])
-    data = set_years(data)
-    data = set_sectors(data)
+    if 'unit' in data.columns:
+        data['unit'] = rename_prices(data['unit'])
+    if 'year' in data.columns:
+        data = set_years(data)
+    if 'sector' in data.columns:
+        data = set_sectors(data)
+    #Convert value to numeric
+    data['value'] = pd.to_numeric(data['value'], errors='coerce')
 
     # c. Reshape
-    data = data.pivot_table(values ='value', 
-                            index  = ['sector','year','asset'],
-                            columns= 'unit')
+    data = reshape_data(data)
     
     # d. Aggregate
-    # i. Aggregate over sectors
-    sectormap = load_sectormap()
-    data = aggregate(data, sectormap, 'sector')
+    # i. Convert quantities to values in previous year's prices
+    if 'Q' in data.columns:
+        data['V'], data['D'] = VQ_to_VD(data['V'], data['Q'])
+        
+    # ii. Aggregate over sectors
+    if 'sector' in data.index.names:
+        sectormap = load_sectormap()
+        data = aggregate(data, sectormap, 'sector')
     
-    # ii. Aggregate over aktiver
-    # o. Load and set up aktivmapping
-    aktivmap = make_aktivmap()
-    data = aggregate(data, aktivmap, 'asset')
+    # iii. Aggregate over aktiver
+    if 'asset' in data.index.names:
+        aktivmap = make_aktivmap()
+        data = aggregate(data, aktivmap, 'asset')
     
     # iii. Apply chain index
-    V, D = VQ_to_VD(data['V'], data['Q'])
-    P, Q = chain_index(V, D, base_year=2010)
+    V, D = data['V'], data['D']
+    P, Q = chain_index(V, D)
+    
+    # e. Save
     data = pd.concat([V, D, P, Q], axis=1)
-    
-    # e. Export
-    to_processed(data, filename)
-
-def transform_investment():
-
-    #a. Load
-    filename = 'NABK69_I'
-    data = read_csv(filename)
-
-    #b. Clean data
-    data = rename_colums(data)
-    data['unit'] = rename_prices(data['unit'])
-    data = set_years(data)
-    data = set_sectors(data)
-
-    # c. Reshape
-    data = data.pivot_table(values ='value', 
-                            index  = ['sector','year','asset'],
-                            columns= 'unit')
-    
-    # d. Aggregate
-    # i. Aggregate over sectors
-    sectormap = load_sectormap()
-    data = aggregate(data, sectormap, 'sector')
-    
-    # ii. Aggregate over aktiver
-    # Load and set up aktivmapping
-    aktivmap = make_aktivmap()
-    data = aggregate(data, aktivmap, 'asset')
-    
-    # iii. Apply chain index
-    V, D = VQ_to_VD(data['V'], data['Q'])
-    P, Q = chain_index(V, D, base_year=2010)
-    data = pd.concat([V, D, P, Q], axis=1)
-    
-    # e. Export
-    to_processed(data, filename)
-    
-def transform_production():
-
-    #a. Load
-    filename = 'NIO4F_Y'
-    data = read_csv(filename)
-
-    #b. Clean data
-    data = rename_colums(data)
-    data['unit'] = rename_prices(data['unit'])
-    data = set_years(data)
-    data = set_sectors(data, col='sector')
-
-    # c. Reshape
-    data = data.pivot_table(values ='value', 
-                            index  = ['sector','year'],
-                            columns= 'unit')
-    
-    # d. Aggregate
-    # Aggregate over sectors
-    sectormap = load_sectormap()
-    data = aggregate(data, sectormap, 'sector')
-    
-    # e. Export
-    to_processed(data, filename)
-    
-def transform_materials():
-
-    #a. Load
-    filename = 'NIO4F_R'
-    data = read_csv(filename)
-
-    #b. Clean data
-    data = rename_colums(data)
-    data['unit'] = rename_prices(data['unit'])
-    data = set_years(data)
-    data = set_sectors(data, col='sector')
-
-    # c. Reshape
-    data = data.pivot_table(values ='value', 
-                            index  = ['sector','year'],
-                            columns= 'unit')
-    
-    # d. Aggregate
-    # Aggregate over sectors
-    sectormap = load_sectormap()
-    data = aggregate(data, sectormap, 'sector')
-    
-    # e. Export
-    to_processed(data, filename)
-    
-def transform_employment():
-
-    #a. Load
-    filename = 'NIO3F_L'
-    data = read_csv(filename)
-
-    #b. Clean data
-    data = rename_colums(data)
-    data['unit'] = rename_prices(data['unit'])
-    data = set_years(data)
-    data = set_sectors(data, col='sector')
-
-    # c. Reshape
-    data = data.pivot_table(values ='value', 
-                            index  = ['sector','year'],
-                            columns= 'unit')
-    
-    # d. Aggregate
-    # Aggregate over sectors
-    sectormap = load_sectormap()
-    data = aggregate(data, sectormap, 'sector')
-    
-    # e. Export
-    to_processed(data, filename)
-    
-def transform_taxes():
-
-    #a. Load
-    filename = 'NIO3F_T'
-    data = read_csv(filename)
-
-    #b. Clean data
-    data = rename_colums(data)
-    data['unit'] = rename_prices(data['unit'])
-    data = set_years(data)
-    data = set_sectors(data, col='sector')
-
-    # c. Reshape
-    data = data.pivot_table(values ='value', 
-                            index  = ['sector','year'],
-                            columns= 'unit')
-    
-    # d. Aggregate
-    # Aggregate over sectors
-    sectormap = load_sectormap()
-    data = aggregate(data, sectormap, 'sector')
-    
-    # e. Export
-    to_processed(data, filename)
+    data.to_csv('data/processed/{}.csv'.format(filename), index=True)
 
     
 def transform():
-    transform_capital()
-    transform_investment()
-    transform_production()
-    transform_materials()
-    transform_employment()
-    transform_taxes()
-    
-    # #Create chain index (using Values in current and previous year's prices)
-    # for year in years:
-    #     #Initial year
-    #     if year==years[0]:
-    #         P=[1]
-    #         #V where time is yr
-    #         V_agg=V_input.loc[V_input.index.get_level_values('TID')==year]
-    #         Q=[V_agg]
-    #     else:
-    #         #Price and quantity index
-    #         V=V_input.loc[V_input.index.get_level_values('TID')==year]
-    #         D=D_input.loc[D_input.index.get_level_values('TID')==year]
-    #         P.append((V/D)*P[-1])
-    #         Q.append(V/D[-1])
-            
-    # P = pd.Series(np.concatenate(P), index=V_input.index)
-
+    transform_variable('NABK69_K')
+    transform_variable('NABK69_I')
+    transform_variable('NIO4F_Y')
+    transform_variable('NIO4F_R')
+    transform_variable('NIO3F_L')
+    transform_variable('NIO3F_T')
