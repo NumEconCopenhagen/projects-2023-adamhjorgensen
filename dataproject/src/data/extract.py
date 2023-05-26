@@ -160,6 +160,24 @@ def get_taxes():
     filename = 'NIO3F_T'
     to_raw(data, filename)
     
+def get_interestrate():
+    """ Extracts data on interest rate from DST and exports it to csv
+    """
+    
+    # a. Get data from DST
+    data = Dst.utils.to_dataframe(Dst.get_data(
+        table_id = 'MPK100',
+        variables={
+            'LAND':['420'],
+            'TID':['*']
+        }
+    ))
+    
+    #b. Export to csv
+    filename = 'MPK100'
+    to_raw(data, filename)
+            
+    
 def extract():
     get_capital()
     get_investment()
@@ -167,6 +185,7 @@ def extract():
     get_materials()
     get_employment()
     get_taxes()
+    get_interestrate()
     
 
 

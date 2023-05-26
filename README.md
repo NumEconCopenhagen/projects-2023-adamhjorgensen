@@ -8,4 +8,5 @@ This repository contains
 2. Data project.
 	- I fetch data from DST's API and show markups across sectors.
 3. Model project. 
+4. Exam project
 

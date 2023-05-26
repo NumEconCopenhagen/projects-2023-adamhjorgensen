@@ -55,6 +55,7 @@ def rename_colums(df: pd.DataFrame):
         'INDHOLD': 'value',
         'TILGANG1': 'type',
         'ANVENDELSE': 'sector',
+        'LAND': 'country',
     }
     
     df = df.copy()
@@ -238,6 +239,26 @@ def transform_variable(filename):
     # e. Save
     data = pd.concat([V, D, P, Q], axis=1)
     data.to_csv('data/processed/{}.csv'.format(filename), index=True)
+    
+def transform_interestrate():
+    
+    # a. Load
+    filename = 'MPK100'
+    data = read_csv(filename)
+    
+    # b. Clean
+    data = rename_colums(data)
+    data = set_years(data)
+    
+    # c. Add sector and asset and reshape data
+    data = data.set_index(['year'])['value']
+    sectors = load_sectormap()['MAKRO'].unique()
+    assets = make_aktivmap()['aggr'].unique()
+    data = pd.concat([data]*len(sectors), keys=sectors, names=['sector','year'])
+    data = pd.concat([data]*len(assets), keys=assets, names=['asset','sector','year'])
+    data /= 100 # Convert to decimal
+    # d. Save
+    data.to_csv('data/processed/{}.csv'.format(filename), index=True)
 
     
 def transform():
@@ -247,3 +268,4 @@ def transform():
     transform_variable('NIO4F_R')
     transform_variable('NIO3F_L')
     transform_variable('NIO3F_T')
+    transform_interestrate()
